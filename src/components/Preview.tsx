@@ -33,6 +33,8 @@ interface PreviewProps {
   viewportWidth: number | string;
   showGuides: boolean;
   containerRef?: React.MutableRefObject<HTMLDivElement | null>;
+  enableTransition?: boolean;
+  id?: string;
 }
 
 export const Preview: React.FC<PreviewProps> = ({
@@ -44,13 +46,16 @@ export const Preview: React.FC<PreviewProps> = ({
   viewportWidth,
   showGuides,
   containerRef: externalRef,
+  enableTransition = true,
+  id: customId,
 }) => {
   const internalRef = useRef<HTMLDivElement>(null);
   const containerRef = externalRef || internalRef;
   const scrollWrapperRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const [overlayInfo, setOverlayInfo] = useState<OverlayInfo | null>(null);
-  const styleIdRef = useRef(`preview-style-${Math.random().toString(36).slice(2, 9)}`);
+  const styleIdRef = useRef(`preview-style-${customId || Math.random().toString(36).slice(2, 9)}`);
+  const containerId = customId || 'preview-container';
 
   const calculateOverlay = useCallback(() => {
     const container = containerRef.current;
@@ -121,7 +126,7 @@ export const Preview: React.FC<PreviewProps> = ({
       document.head.appendChild(styleEl);
     }
 
-    const scope = `#${containerRef.current?.id || 'preview-container'}`;
+    const scope = `#${containerId}`;
     const scopedContainerCSS = containerCSS
       .replace(/\.container/g, scope);
     const scopedItemsCSS = itemsCSS
@@ -134,10 +139,21 @@ export const Preview: React.FC<PreviewProps> = ({
       }
     }
 
-    styleEl.textContent = scopedContainerCSS + '\n\n' + scopedItemsCSS + extraItemStyles;
+    const transitionStyles = enableTransition
+      ? `
+${scope} {
+  transition: all 300ms ease;
+}
+${scope} > .item {
+  transition: all 300ms ease;
+}
+`
+      : '';
+
+    styleEl.textContent = scopedContainerCSS + '\n\n' + scopedItemsCSS + extraItemStyles + transitionStyles;
 
     return () => {};
-  }, [containerCSS, itemsCSS, itemStyles, containerRef]);
+  }, [containerCSS, itemsCSS, itemStyles, containerRef, enableTransition, containerId]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -203,7 +219,7 @@ export const Preview: React.FC<PreviewProps> = ({
         }}
       >
         <div
-          id="preview-container"
+          id={containerId}
           ref={containerRef as any}
           className="container relative"
           style={{ padding: '16px', minHeight: '400px', height: '100%' }}

@@ -35,3 +35,16 @@ export interface ViewportConfig {
   label: string;
   icon: string;
 }
+
+export interface Snapshot {
+  id: string;
+  name: string;
+  createdAt: number;
+  containerCSS: string;
+  itemsCSS: string;
+  itemCount: number;
+  itemStyles?: Record<number, string>;
+  htmlTemplate?: string;
+  thumbnail?: string;
+  layoutProps: LayoutProps;
+}

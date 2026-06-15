@@ -231,3 +231,71 @@ export function getContainerDeclarations(raw: string): { property: string; value
   }
   return result;
 }
+
+export async function captureThumbnail(element: HTMLElement | null): Promise<string | undefined> {
+  if (!element) return undefined;
+  
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return undefined;
+
+    const rect = element.getBoundingClientRect();
+    const scale = 0.5;
+    canvas.width = rect.width * scale;
+    canvas.height = rect.height * scale;
+    ctx.scale(scale, scale);
+
+    const computedStyle = getComputedStyle(element);
+    const bgColor = computedStyle.backgroundColor || '#ffffff';
+    
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, rect.width, rect.height);
+
+    const children = Array.from(element.children) as HTMLElement[];
+    for (const child of children) {
+      const childRect = child.getBoundingClientRect();
+      const childStyle = getComputedStyle(child);
+      
+      const x = childRect.left - rect.left;
+      const y = childRect.top - rect.top;
+      const w = childRect.width;
+      const h = childRect.height;
+
+      const bgGradient = childStyle.backgroundImage;
+      if (bgGradient && bgGradient.includes('gradient')) {
+        const colors = bgGradient.match(/#[a-fA-F0-9]{6}|#[a-fA-F0-9]{3}|rgb\([^)]+\)/g);
+        if (colors && colors.length >= 2) {
+          const gradient = ctx.createLinearGradient(x, y, x + w, y + h);
+          gradient.addColorStop(0, colors[0]);
+          gradient.addColorStop(1, colors[colors.length - 1]);
+          ctx.fillStyle = gradient;
+        } else {
+          ctx.fillStyle = '#6366f1';
+        }
+      } else {
+        ctx.fillStyle = childStyle.backgroundColor || '#6366f1';
+      }
+
+      const radius = parseFloat(childStyle.borderRadius) || 0;
+      if (radius > 0) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, radius);
+        ctx.fill();
+      } else {
+        ctx.fillRect(x, y, w, h);
+      }
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `${Math.min(12, h * 0.3)}px -apple-system, BlinkMacSystemFont, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(child.textContent?.slice(0, 10) || '', x + w / 2, y + h / 2);
+    }
+
+    return canvas.toDataURL('image/png');
+  } catch (e) {
+    console.warn('Thumbnail capture failed:', e);
+    return undefined;
+  }
+}

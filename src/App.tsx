@@ -4,9 +4,11 @@ import { Preview } from './components/Preview';
 import { PropertyForm } from './components/PropertyForm';
 import { PresetSelector } from './components/PresetSelector';
 import { ViewportSwitcher, VIEWPORTS } from './components/ViewportSwitcher';
+import { SnapshotPanel } from './components/SnapshotPanel';
+import { CompareView } from './components/CompareView';
 import { PRESETS } from './presets';
-import { LayoutProps, ViewportSize } from './types';
-import { parseContainerCSS, stringifyContainerCSS, buildFullCSS, buildStandaloneHTML } from './cssUtils';
+import { LayoutProps, ViewportSize, Snapshot } from './types';
+import { parseContainerCSS, stringifyContainerCSS, buildFullCSS, buildStandaloneHTML, captureThumbnail } from './cssUtils';
 
 const DEFAULT_PRESET = PRESETS[1];
 
@@ -24,7 +26,12 @@ const App: React.FC = () => {
   const [isCodeUpdating, setIsCodeUpdating] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<'container' | 'items'>('container');
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [compareMode, setCompareMode] = useState(false);
+  const [selectedForCompare, setSelectedForCompare] = useState<string[]>([]);
+  const [showCompareView, setShowCompareView] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const showNotification = useCallback((msg: string) => {
     setNotification(msg);
@@ -101,6 +108,92 @@ const App: React.FC = () => {
   const handleViewportChange = useCallback((v: ViewportSize) => {
     setViewport(v);
   }, []);
+
+  const handleTakeSnapshot = useCallback(async () => {
+    if (snapshots.length >= 10) {
+      showNotification('快照数量已达上限（10条）');
+      return;
+    }
+
+    const thumbnail = await captureThumbnail(containerRef.current);
+    
+    const newSnapshot: Snapshot = {
+      id: `snapshot-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      name: `快照 ${snapshots.length + 1}`,
+      createdAt: Date.now(),
+      containerCSS,
+      itemsCSS,
+      itemCount,
+      itemStyles,
+      htmlTemplate,
+      thumbnail,
+      layoutProps,
+    };
+
+    setSnapshots(prev => [newSnapshot, ...prev]);
+    showNotification('快照已保存');
+  }, [snapshots.length, containerCSS, itemsCSS, itemCount, itemStyles, htmlTemplate, layoutProps, showNotification]);
+
+  const handleDeleteSnapshot = useCallback((id: string) => {
+    setSnapshots(prev => prev.filter(s => s.id !== id));
+    setSelectedForCompare(prev => prev.filter(sid => sid !== id));
+    showNotification('快照已删除');
+  }, [showNotification]);
+
+  const handleReorderSnapshots = useCallback((newSnapshots: Snapshot[]) => {
+    setSnapshots(newSnapshots);
+  }, []);
+
+  const handleLoadSnapshot = useCallback((snapshot: Snapshot) => {
+    setContainerCSS(snapshot.containerCSS);
+    setItemsCSS(snapshot.itemsCSS);
+    setLayoutProps(snapshot.layoutProps);
+    setItemCount(snapshot.itemCount);
+    setItemStyles(snapshot.itemStyles);
+    setHtmlTemplate(snapshot.htmlTemplate);
+    setCurrentPresetId('');
+    showNotification(`已加载: ${snapshot.name}`);
+  }, [showNotification]);
+
+  const handleToggleCompareMode = useCallback(() => {
+    setCompareMode(prev => !prev);
+    setSelectedForCompare([]);
+    setShowCompareView(false);
+  }, []);
+
+  const handleToggleCompareSelect = useCallback((id: string) => {
+    setSelectedForCompare(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(sid => sid !== id);
+      }
+      if (prev.length >= 2) {
+        return [prev[1], id];
+      }
+      return [...prev, id];
+    });
+  }, []);
+
+  const handleClearCompare = useCallback(() => {
+    setSelectedForCompare([]);
+  }, []);
+
+  useEffect(() => {
+    if (selectedForCompare.length === 2) {
+      setShowCompareView(true);
+    } else {
+      setShowCompareView(false);
+    }
+  }, [selectedForCompare]);
+
+  const handleCloseCompareView = useCallback(() => {
+    setShowCompareView(false);
+    setSelectedForCompare([]);
+    setCompareMode(false);
+  }, []);
+
+  const compareSnapshots = selectedForCompare
+    .map(id => snapshots.find(s => s.id === id))
+    .filter(Boolean) as Snapshot[];
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -225,17 +318,43 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex-1 min-w-0 flex flex-col">
-          <Preview
-            containerCSS={containerCSS}
-            itemsCSS={itemsCSS}
-            itemStyles={itemStyles}
-            itemCount={itemCount}
-            htmlTemplate={htmlTemplate}
-            viewportWidth={viewportWidth}
-            showGuides={showGuides}
-            containerRef={containerRef}
-          />
+        <div className="flex-1 min-w-0 flex flex-row">
+          <div className="flex-1 min-w-0">
+            {showCompareView && compareSnapshots.length === 2 ? (
+              <CompareView
+                snapshotA={compareSnapshots[0]}
+                snapshotB={compareSnapshots[1]}
+                viewportWidth={viewportWidth}
+                onClose={handleCloseCompareView}
+              />
+            ) : (
+              <Preview
+                containerCSS={containerCSS}
+                itemsCSS={itemsCSS}
+                itemStyles={itemStyles}
+                itemCount={itemCount}
+                htmlTemplate={htmlTemplate}
+                viewportWidth={viewportWidth}
+                showGuides={showGuides}
+                containerRef={containerRef}
+                enableTransition={true}
+              />
+            )}
+          </div>
+          <div className="w-[280px] flex-shrink-0">
+            <SnapshotPanel
+              snapshots={snapshots}
+              onTakeSnapshot={handleTakeSnapshot}
+              onDeleteSnapshot={handleDeleteSnapshot}
+              onReorderSnapshots={handleReorderSnapshots}
+              onLoadSnapshot={handleLoadSnapshot}
+              compareMode={compareMode}
+              onToggleCompareMode={handleToggleCompareMode}
+              selectedForCompare={selectedForCompare}
+              onToggleCompareSelect={handleToggleCompareSelect}
+              onClearCompare={handleClearCompare}
+            />
+          </div>
         </div>
       </div>
 
